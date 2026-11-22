@@ -15,7 +15,7 @@ jobs:
     steps:
       # Крок 1: Завантажити код із репозиторію на раннер
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       # Крок 2: Запустити офіційний контейнер Nginx і перевірити наш default.conf через nginx -t
       - name: Test Nginx configuration syntax
