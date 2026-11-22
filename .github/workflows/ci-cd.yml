@@ -8,12 +8,42 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - name: Test Nginx syntax
+      - uses: actions/checkout@v4
+
+      - name: 1. Static check (Nginx syntax)
         run: |
           docker run --rm \
             -v ${{ github.workspace }}/default.conf:/etc/nginx/conf.d/ci-cd-app.conf:ro \
             nginx:alpine nginx -t
+
+      - name: 2. Integration test (HTTP 200 & Response body)
+        run: |
+          # Запускаємо Nginx у фоні (-d) з прокинутим портом 8085
+          docker run -d --name test-nginx -p 8085:8085 \
+            -v ${{ github.workspace }}/default.conf:/etc/nginx/conf.d/ci-cd-app.conf:ro \
+            nginx:alpine
+
+          # Даємо 1 секунду на старт контейнера
+          sleep 1
+
+          # Перевіряємо HTTP-статус код (має бути 200)
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8085)
+          echo "HTTP Status: $STATUS"
+          if [ "$STATUS" != "200" ]; then
+            echo "❌ Test failed! Expected HTTP 200, got $STATUS"
+            docker logs test-nginx
+            exit 1
+          fi
+
+          # Перевіряємо, що у відповіді є потрібний текст
+          BODY=$(curl -s http://localhost:8085)
+          echo "Response Body: $BODY"
+          if ! echo "$BODY" | grep -q "Its working:"; then
+            echo "❌ Test failed! Unexpected response body!"
+            exit 1
+          fi
+
+          echo "✅ All CI tests passed!"
 
   deploy:
     needs: validate
