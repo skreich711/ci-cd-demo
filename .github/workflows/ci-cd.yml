@@ -1,44 +1,30 @@
-name: Nginx Config CI/CD
+name: Fast VPS CI/CD
 
-# Коли запускати пайплайн: при кожному push або pull request у гілку main
 on:
   push:
     branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
 
 jobs:
-  # ЕТАП 1: Перевірка синтаксису конфігу (CI)
-  validate-nginx:
-    runs-on: ubuntu-latest # GitHub дає чисту віртуалку Ubuntu
-
+  validate:
+    runs-on: ubuntu-latest
     steps:
-      # Крок 1: Завантажити код із репозиторію на раннер
-      - name: Checkout repository
-        uses: actions/checkout@v5
-
-      # Крок 2: Запустити офіційний контейнер Nginx і перевірити наш default.conf через nginx -t
-      - name: Test Nginx configuration syntax
+      - uses: actions/checkout@v4
+      - name: Test Nginx syntax
         run: |
           docker run --rm \
-            -v ${{ github.workspace }}/default.conf:/etc/nginx/conf.d/default.conf:ro \
+            -v ${{ github.workspace }}/default.conf:/etc/nginx/conf.d/ci-cd-app.conf:ro \
             nginx:alpine nginx -t
 
-  # ЕТАП 2: Імітація деплою на сервер (CD)
-  deploy-to-server:
-    needs: validate-nginx # Запуститься ТІЛЬКИ якщо успішно пройшов етап validate-nginx
+  deploy:
+    needs: validate
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' # Деплоїмо тільки з main, не з Pull Request
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v5
-
-      - name: Simulate Deploy via SSH
-        env:
-          # Так безпечно передаються секрети (паролі, SSH-ключі) з налаштувань репозиторію
-          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+      - uses: actions/checkout@v4
+      - name: Deploy to VPS
         run: |
-          echo "Connecting to production server..."
-          echo "Copying default.conf and reloading Nginx (systemctl reload nginx)..."
-          echo "Deploy finished successfully!"
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts
+          rsync -avz default.conf ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/etc/nginx/conf.d/ci-cd-app.conf
+          ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "nginx -t && systemctl reload nginx"
